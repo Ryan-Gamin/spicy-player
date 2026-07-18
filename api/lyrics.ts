@@ -1,21 +1,16 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import { getInternalToken } from './internal-token'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).send('Method Not Allowed')
 
-  const rawAuth = req.headers['x-spotify-auth'] as string | undefined
   const spicyVersion = req.headers['x-spicy-version'] as string | undefined
 
-  if (!rawAuth) return res.status(401).send('Missing Spotify auth')
-
-  // Strip duplicate Bearer prefix if frontend already included it
-  const spotifyAuth = rawAuth.startsWith('Bearer Bearer ')
-    ? rawAuth.slice('Bearer '.length)
-    : rawAuth
-
-  console.log('[lyrics proxy] version:', spicyVersion, '| auth prefix:', spotifyAuth.slice(0, 20))
-
   try {
+    // Use the internal Spotify token (from sp_dc cookie) — this is what SpicyLyrics needs
+    const spotifyAuth = await getInternalToken()
+    console.log('[lyrics proxy] using internal token, version:', spicyVersion)
+
     const upstream = await fetch('https://api.spicylyrics.org/query', {
       method: 'POST',
       headers: {
@@ -33,7 +28,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (!upstream.ok) {
       const errText = await upstream.text()
-      console.error('[lyrics proxy] upstream error body:', errText.slice(0, 300))
+      console.error('[lyrics proxy] upstream error:', errText.slice(0, 300))
       return res.status(upstream.status).send('Upstream error')
     }
 
