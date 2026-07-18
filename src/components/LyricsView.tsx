@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import type { LyricLine } from '../utils/parseTTML'
+import type { LyricLine } from '../hooks/useLyrics'
 
 interface LyricsViewProps {
   lyrics: LyricLine[] | null
@@ -52,11 +52,14 @@ export default function LyricsView({ lyrics, loading, progressMs }: LyricsViewPr
     )
   }
 
+  // Static lyrics (all startMs = 0) — just display all lines without highlighting
+  const isStatic = lyrics.every((l) => l.startMs === 0 && l.endMs === 0)
+
   return (
     <div className="lyrics-scroll" ref={containerRef}>
       {lyrics.map((line, i) => {
-        const isActive = i === activeIndex
-        const isPast = i < activeIndex
+        const isActive = !isStatic && i === activeIndex
+        const isPast = !isStatic && i < activeIndex
 
         return (
           <div
@@ -76,10 +79,7 @@ export default function LyricsView({ lyrics, loading, progressMs }: LyricsViewPr
                 const wordActive =
                   isActive && progressMs >= word.startMs && progressMs < word.endMs
                 return (
-                  <span
-                    key={wi}
-                    className={wordActive ? 'word-active' : ''}
-                  >
+                  <span key={wi} className={wordActive ? 'word-active' : ''}>
                     {word.text}{' '}
                   </span>
                 )

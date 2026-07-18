@@ -13,14 +13,18 @@ async function getVersion(): Promise<string> {
 }
 
 function parseLines(data: unknown): LyricLine[] | null {
-  if (!data || typeof data !== 'object') return null
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return null
 
   const d = data as Record<string, unknown>
-  console.log('[SpicyLyrics] unpacked keys:', Object.keys(d))
-  console.log('[SpicyLyrics] Type:', d.Type, 'Lines count:', Array.isArray(d.Lines) ? d.Lines.length : 'N/A')
-
-  // Expected shape: { Type, Lines: [{ Text, StartTime, EndTime, IsBackground, Syllabes }] }
   if (!Array.isArray(d.Lines) || d.Lines.length === 0) return null
+
+  const firstLine = d.Lines[0] as Record<string, unknown>
+  // Detect if times are in seconds (< 10000) or already ms (> 10000)
+  const rawStart = Number(firstLine?.StartTime ?? 0)
+  const isSeconds = rawStart > 0 && rawStart < 10000
+  const toMs = (v: unknown) => isSeconds ? Number(v ?? 0) * 1000 : Number(v ?? 0)
+
+  console.log('[SpicyLyrics] Type:', d.Type, '| timing unit:', isSeconds ? 'seconds->ms' : 'ms', '| lines:', (d.Lines as unknown[]).length)
 
   const lines: LyricLine[] = []
   for (const line of d.Lines as Array<Record<string, unknown>>) {
@@ -28,14 +32,14 @@ function parseLines(data: unknown): LyricLine[] | null {
     if (!text) continue
     lines.push({
       text,
-      startMs: Number(line.StartTime ?? 0),
-      endMs: Number(line.EndTime ?? 0),
+      startMs: toMs(line.StartTime),
+      endMs: toMs(line.EndTime),
       isBackground: Boolean(line.IsBackground ?? false),
       words: Array.isArray(line.Syllabes)
         ? (line.Syllabes as Array<Record<string, unknown>>).map((s) => ({
             text: String(s.Text ?? ''),
-            startMs: Number(s.StartTime ?? 0),
-            endMs: Number(s.EndTime ?? 0),
+            startMs: toMs(s.StartTime),
+            endMs: toMs(s.EndTime),
           }))
         : undefined,
     })
@@ -74,9 +78,7 @@ export async function fetchSpicyLyrics(
   if (!result || result.httpStatus !== 200) return null
 
   try {
-    // Always unpack — format:'json' is misleading, data is always SLObjPack encoded
     const unpacked = packer.unpack(result.data)
-    console.log('[SpicyLyrics] unpacked sample:', JSON.stringify(unpacked)?.slice(0, 200))
     return parseLines(unpacked)
   } catch (e) {
     console.error('[SpicyLyrics] unpack failed:', e)
