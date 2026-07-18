@@ -1,7 +1,6 @@
 // Ported from Spikerko/spicy-lyrics — SLObjPack custom compression format
 type JSONPrimitive = string | number | boolean | null
 type JSONValue = JSONPrimitive | JSONValue[] | { [key: string]: JSONValue }
-type PackedPayload = [JSONPrimitive[], number[]]
 
 const DEFAULT_FORBIDDEN_KEYS: ReadonlySet<string> = new Set(['__proto__', 'constructor', 'prototype'])
 

@@ -48,9 +48,7 @@ export async function fetchSpicyLyrics(
           },
         },
       ],
-      client: {
-        version,
-      },
+      client: { version },
     }),
   })
 
@@ -61,7 +59,7 @@ export async function fetchSpicyLyrics(
   if (!queryResult || queryResult.httpStatus !== 200) return null
 
   try {
-    const unpacked = packer.unpack(queryResult.data) as SpicyLyricsResult
+    const unpacked = packer.unpack(queryResult.data) as unknown as SpicyLyricsResult
     return unpacked
   } catch {
     return null
