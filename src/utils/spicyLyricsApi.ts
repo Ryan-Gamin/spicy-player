@@ -14,73 +14,61 @@ async function getVersion(): Promise<string> {
   return cachedVersion
 }
 
-// Raw line as returned by API: either object form or legacy array form
-type RawLine = {
-  Text?: string
-  StartTime?: number
-  EndTime?: number
-  IsBackground?: boolean
-  Syllabes?: Array<{ Text: string; StartTime: number; EndTime: number }>
-  Type?: string
-} | unknown[]
-
 function parseLines(data: unknown): LyricLine[] | null {
-  console.log('[SpicyLyrics] raw data sample:', JSON.stringify(data)?.slice(0, 300))
+  // Shape: [["Text", "StartTime", "EndTime", ...], ["line text", 1234, 5678, ...], ...]
+  // First row is the column header, skip it
+  if (!Array.isArray(data) || data.length < 2) return null
 
-  // Case 1: { Type, Lines: [...] }
-  if (data && typeof data === 'object' && !Array.isArray(data)) {
-    const d = data as Record<string, unknown>
-    if (Array.isArray(d.Lines)) {
-      return (d.Lines as RawLine[]).map(parseSingleLine).filter(Boolean) as LyricLine[]
-    }
-  }
+  const header = data[0] as unknown[]
 
-  // Case 2: flat array of lines [ { Text, StartTime, EndTime, ... }, ... ]
-  if (Array.isArray(data) && data.length > 0 && typeof data[0] === 'object' && !Array.isArray(data[0])) {
-    return (data as RawLine[]).map(parseSingleLine).filter(Boolean) as LyricLine[]
-  }
-
-  // Case 3: array of arrays [ ["Text", startMs, endMs], ... ]
-  if (Array.isArray(data) && data.length > 0 && Array.isArray(data[0])) {
-    return (data as unknown[][]).map((entry) => {
-      const text = String(entry[0] ?? '')
-      const startMs = Number(entry[1] ?? 0)
-      const endMs = Number(entry[2] ?? 0)
+  // Object array: [{ Text, StartTime, EndTime }, ...]
+  if (!Array.isArray(header)) {
+    return (data as Array<Record<string, unknown>>).map((line) => {
+      const text = String(line.Text ?? '').trim()
       if (!text) return null
-      return { text, startMs, endMs } as LyricLine
+      return {
+        text,
+        startMs: Number(line.StartTime ?? 0),
+        endMs: Number(line.EndTime ?? 0),
+        isBackground: Boolean(line.IsBackground),
+        words: Array.isArray(line.Syllabes)
+          ? (line.Syllabes as Array<Record<string, unknown>>).map((s) => ({
+              text: String(s.Text ?? ''),
+              startMs: Number(s.StartTime ?? 0),
+              endMs: Number(s.EndTime ?? 0),
+            }))
+          : undefined,
+      } as LyricLine
     }).filter(Boolean) as LyricLine[]
   }
 
-  console.warn('[SpicyLyrics] unrecognised data shape')
-  return null
-}
+  // Array-of-arrays with header row — find column indices dynamically
+  const col = (name: string) => (header as string[]).indexOf(name)
+  const iText = col('Text')
+  const iStart = col('StartTime')
+  const iEnd = col('EndTime')
+  const iBackground = col('IsBackground')
 
-function parseSingleLine(line: RawLine): LyricLine | null {
-  if (Array.isArray(line)) {
-    const text = String(line[0] ?? '')
-    if (!text) return null
-    return {
+  if (iText === -1) {
+    console.warn('[SpicyLyrics] no Text column in header:', header)
+    return null
+  }
+
+  // Skip header row (index 0), parse the rest
+  const lines: LyricLine[] = []
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i] as unknown[]
+    const text = String(row[iText] ?? '').trim()
+    if (!text) continue
+    lines.push({
       text,
-      startMs: Number(line[1] ?? 0),
-      endMs: Number(line[2] ?? 0),
-    }
+      startMs: iStart !== -1 ? Number(row[iStart] ?? 0) : 0,
+      endMs: iEnd !== -1 ? Number(row[iEnd] ?? 0) : 0,
+      isBackground: iBackground !== -1 ? Boolean(row[iBackground]) : false,
+    })
   }
-  const l = line as Record<string, unknown>
-  const text = String(l.Text ?? '')
-  if (!text) return null
-  return {
-    text,
-    startMs: Number(l.StartTime ?? 0),
-    endMs: Number(l.EndTime ?? 0),
-    isBackground: Boolean(l.IsBackground),
-    words: Array.isArray(l.Syllabes)
-      ? (l.Syllabes as Array<Record<string, unknown>>).map((s) => ({
-          text: String(s.Text ?? ''),
-          startMs: Number(s.StartTime ?? 0),
-          endMs: Number(s.EndTime ?? 0),
-        }))
-      : undefined,
-  }
+
+  return lines.length > 0 ? lines : null
 }
 
 export async function fetchSpicyLyrics(
