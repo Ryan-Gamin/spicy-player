@@ -12,7 +12,7 @@ interface PlayerProps {
 
 export default function Player({ token, onLogout }: PlayerProps) {
   const { nowPlaying } = useNowPlaying(token)
-  const { lyrics, loading: lyricsLoading } = useLyrics(nowPlaying?.trackId ?? null)
+  const { lyrics, loading: lyricsLoading } = useLyrics(nowPlaying?.trackId ?? null, token)
   const [bgColor, setBgColor] = useState('20, 20, 40')
   const prevTrackId = useRef<string | null>(null)
 
@@ -43,7 +43,6 @@ export default function Player({ token, onLogout }: PlayerProps) {
       </button>
 
       <div className="player-layout">
-        {/* Left: Player Card */}
         <div className="glass-card player-card">
           {nowPlaying ? (
             <>
@@ -73,7 +72,6 @@ export default function Player({ token, onLogout }: PlayerProps) {
           )}
         </div>
 
-        {/* Right: Lyrics Card */}
         <div className="glass-card lyrics-card">
           <LyricsView
             lyrics={lyrics}

@@ -1,18 +1,27 @@
 import { useEffect, useState } from 'react'
-import { parseTTML, type LyricLine } from '../utils/parseTTML'
+import { fetchSpicyLyrics } from '../utils/spicyLyricsApi'
 
-const STORAGE_HOSTS = [
-  'https://public.storage.spicylyrics.org/spicy-lyrics',
-  'https://lcgateway.ps-ec1.spikerko.org/spicy-lyrics',
-]
+export interface LyricLine {
+  startMs: number
+  endMs: number
+  text: string
+  isBackground?: boolean
+  words?: LyricWord[]
+}
 
-export function useLyrics(trackId: string | null) {
+export interface LyricWord {
+  startMs: number
+  endMs: number
+  text: string
+}
+
+export function useLyrics(trackId: string | null, token: string | null) {
   const [lyrics, setLyrics] = useState<LyricLine[] | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!trackId) {
+    if (!trackId || !token) {
       setLyrics(null)
       return
     }
@@ -22,31 +31,40 @@ export function useLyrics(trackId: string | null) {
     setError(null)
     setLyrics(null)
 
-    async function fetchLyrics() {
-      for (const host of STORAGE_HOSTS) {
-        try {
-          const res = await fetch(`${host}/${trackId}.ttml`)
-          if (!res.ok) continue
-          const ttml = await res.text()
-          if (cancelled) return
-          const parsed = parseTTML(ttml)
-          setLyrics(parsed)
+    fetchSpicyLyrics(trackId, token)
+      .then((result) => {
+        if (cancelled) return
+        if (!result || !result.Lines || result.Lines.length === 0) {
+          setLyrics(null)
+          setError('No lyrics found for this track')
           setLoading(false)
           return
-        } catch {
-          continue
         }
-      }
-      if (!cancelled) {
-        setLyrics(null)
-        setLoading(false)
-        setError('No community lyrics found for this track')
-      }
-    }
 
-    fetchLyrics()
+        const lines: LyricLine[] = result.Lines.map((line) => ({
+          startMs: line.StartTime,
+          endMs: line.EndTime,
+          text: line.Text,
+          isBackground: line.IsBackground ?? false,
+          words: line.Syllabes?.map((s) => ({
+            startMs: s.StartTime,
+            endMs: s.EndTime,
+            text: s.Text,
+          })),
+        }))
+
+        setLyrics(lines)
+        setLoading(false)
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setError('Failed to fetch lyrics')
+          setLoading(false)
+        }
+      })
+
     return () => { cancelled = true }
-  }, [trackId])
+  }, [trackId, token])
 
   return { lyrics, loading, error }
 }
