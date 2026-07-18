@@ -4,19 +4,18 @@ import type { LyricLine } from '../hooks/useLyrics'
 const PROXY_BASE = '/api'
 const packer = new SLObjPack()
 
-let cachedVersion: string | null = null
-
 async function getVersion(): Promise<string> {
-  if (cachedVersion) return cachedVersion
-  const res = await fetch(`${PROXY_BASE}/version`)
+  // Always fetch fresh — bust any browser cache with a timestamp param
+  const res = await fetch(`${PROXY_BASE}/version?t=${Date.now()}`, {
+    cache: 'no-store',
+  })
   if (!res.ok) throw new Error('Failed to fetch SpicyLyrics version')
-  cachedVersion = (await res.text()).trim()
-  return cachedVersion
+  const text = (await res.text()).trim()
+  if (!text) throw new Error('Empty version response')
+  return text
 }
 
 function parseLines(data: unknown): LyricLine[] | null {
-  // Shape: [["Text", "StartTime", "EndTime", ...], ["line text", 1234, 5678, ...], ...]
-  // First row is the column header, skip it
   if (!Array.isArray(data) || data.length < 2) return null
 
   const header = data[0] as unknown[]
@@ -42,19 +41,15 @@ function parseLines(data: unknown): LyricLine[] | null {
     }).filter(Boolean) as LyricLine[]
   }
 
-  // Array-of-arrays with header row — find column indices dynamically
+  // Array-of-arrays: first row is column headers
   const col = (name: string) => (header as string[]).indexOf(name)
   const iText = col('Text')
   const iStart = col('StartTime')
   const iEnd = col('EndTime')
   const iBackground = col('IsBackground')
 
-  if (iText === -1) {
-    console.warn('[SpicyLyrics] no Text column in header:', header)
-    return null
-  }
+  if (iText === -1) return null
 
-  // Skip header row (index 0), parse the rest
   const lines: LyricLine[] = []
   for (let i = 1; i < data.length; i++) {
     const row = data[i] as unknown[]
