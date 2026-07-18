@@ -13,64 +13,35 @@ async function getVersion(): Promise<string> {
 }
 
 function parseLines(data: unknown): LyricLine[] | null {
-  if (!Array.isArray(data) || data.length === 0) return null
+  if (!data || typeof data !== 'object') return null
 
-  const first = data[0]
+  const d = data as Record<string, unknown>
+  console.log('[SpicyLyrics] unpacked keys:', Object.keys(d))
+  console.log('[SpicyLyrics] Type:', d.Type, 'Lines count:', Array.isArray(d.Lines) ? d.Lines.length : 'N/A')
 
-  // Shape A: array of objects [{ Text, StartTime, EndTime }, ...]
-  if (typeof first === 'object' && first !== null && !Array.isArray(first)) {
-    const lines = (data as Array<Record<string, unknown>>).map((line) => {
-      const text = String(line.Text ?? '').trim()
-      if (!text) return null
-      return {
-        text,
-        startMs: Number(line.StartTime ?? 0),
-        endMs: Number(line.EndTime ?? 0),
-        isBackground: Boolean(line.IsBackground),
-      } as LyricLine
-    }).filter(Boolean) as LyricLine[]
-    return lines.length > 0 ? lines : null
+  // Expected shape: { Type, Lines: [{ Text, StartTime, EndTime, IsBackground, Syllabes }] }
+  if (!Array.isArray(d.Lines) || d.Lines.length === 0) return null
+
+  const lines: LyricLine[] = []
+  for (const line of d.Lines as Array<Record<string, unknown>>) {
+    const text = String(line.Text ?? '').trim()
+    if (!text) continue
+    lines.push({
+      text,
+      startMs: Number(line.StartTime ?? 0),
+      endMs: Number(line.EndTime ?? 0),
+      isBackground: Boolean(line.IsBackground ?? false),
+      words: Array.isArray(line.Syllabes)
+        ? (line.Syllabes as Array<Record<string, unknown>>).map((s) => ({
+            text: String(s.Text ?? ''),
+            startMs: Number(s.StartTime ?? 0),
+            endMs: Number(s.EndTime ?? 0),
+          }))
+        : undefined,
+    })
   }
 
-  // Shape B: array of arrays [["Text","StartTime",...], [line, ms, ms], ...]
-  // where data[0] is a proper header array
-  if (Array.isArray(first) && first.length > 1) {
-    const headers = first as string[]
-    const iText = headers.indexOf('Text')
-    const iStart = headers.indexOf('StartTime')
-    const iEnd = headers.indexOf('EndTime')
-    const iBackground = headers.indexOf('IsBackground')
-    if (iText === -1) return null
-    const lines: LyricLine[] = []
-    for (let i = 1; i < data.length; i++) {
-      const row = data[i] as unknown[]
-      const text = String(row[iText] ?? '').trim()
-      if (!text) continue
-      lines.push({
-        text,
-        startMs: iStart !== -1 ? Number(row[iStart] ?? 0) : 0,
-        endMs: iEnd !== -1 ? Number(row[iEnd] ?? 0) : 0,
-        isBackground: iBackground !== -1 ? Boolean(row[iBackground]) : false,
-      })
-    }
-    return lines.length > 0 ? lines : null
-  }
-
-  // Shape C: flat array of strings ["Text", "line1", "line2", ...]
-  // data[0] is the column name string, skip it, rest are lyric lines
-  if (typeof first === 'string') {
-    const lines: LyricLine[] = []
-    // Skip index 0 (it's the column name e.g. "Text")
-    for (let i = 1; i < data.length; i++) {
-      const text = String(data[i] ?? '').trim()
-      if (!text) continue
-      // No timing available — space lines evenly (LyricsView handles timingless display)
-      lines.push({ text, startMs: 0, endMs: 0 })
-    }
-    return lines.length > 0 ? lines : null
-  }
-
-  return null
+  return lines.length > 0 ? lines : null
 }
 
 export async function fetchSpicyLyrics(
@@ -103,10 +74,12 @@ export async function fetchSpicyLyrics(
   if (!result || result.httpStatus !== 200) return null
 
   try {
-    const raw = result.format === 'json' ? result.data : packer.unpack(result.data)
-    return parseLines(raw)
+    // Always unpack — format:'json' is misleading, data is always SLObjPack encoded
+    const unpacked = packer.unpack(result.data)
+    console.log('[SpicyLyrics] unpacked sample:', JSON.stringify(unpacked)?.slice(0, 200))
+    return parseLines(unpacked)
   } catch (e) {
-    console.error('[SpicyLyrics] parse failed:', e)
+    console.error('[SpicyLyrics] unpack failed:', e)
     return null
   }
 }
