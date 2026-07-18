@@ -18,13 +18,19 @@ function parseLines(data: unknown): LyricLine[] | null {
   const d = data as Record<string, unknown>
   if (!Array.isArray(d.Lines) || d.Lines.length === 0) return null
 
+  // Log raw first 3 lines to see exact timing values
+  const sample = (d.Lines as Array<Record<string, unknown>>).slice(0, 3)
+  console.log('[SpicyLyrics] Type:', d.Type)
+  sample.forEach((l, i) => {
+    console.log(`[SpicyLyrics] line[${i}] Text: "${l.Text}" StartTime: ${l.StartTime} (type: ${typeof l.StartTime}) EndTime: ${l.EndTime}`)
+  })
+
   const firstLine = d.Lines[0] as Record<string, unknown>
-  // Detect if times are in seconds (< 10000) or already ms (> 10000)
   const rawStart = Number(firstLine?.StartTime ?? 0)
   const isSeconds = rawStart > 0 && rawStart < 10000
-  const toMs = (v: unknown) => isSeconds ? Number(v ?? 0) * 1000 : Number(v ?? 0)
+  const toMs = (v: unknown) => isSeconds ? Math.round(Number(v ?? 0) * 1000) : Number(v ?? 0)
 
-  console.log('[SpicyLyrics] Type:', d.Type, '| timing unit:', isSeconds ? 'seconds->ms' : 'ms', '| lines:', (d.Lines as unknown[]).length)
+  console.log('[SpicyLyrics] timing unit:', isSeconds ? 'seconds->ms' : 'ms already')
 
   const lines: LyricLine[] = []
   for (const line of d.Lines as Array<Record<string, unknown>>) {
