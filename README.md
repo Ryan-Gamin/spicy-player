@@ -2,35 +2,38 @@
 
 A beautiful frosted glass Spotify player with community-contributed TTML lyrics from [spicylyrics.org](https://spicylyrics.org).
 
+## One-Click Deploy
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/Ryan-Gamin/spicy-player)
+
+Just hit the button above, deploy to Vercel, then open your site — it will walk you through the setup.
+
+## First-Time Setup Flow
+
+When you first open the site, it guides you through 3 steps:
+
+1. **Create a Spotify app** at [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard)
+2. **Add the Redirect URI** — the app shows you the exact URL to paste (your Vercel domain, auto-detected)
+3. **Paste your Client ID** — saved in your browser, no server needed
+
+That's it. Everything is stored locally — no environment variables, no backend.
+
 ## Features
 - 🎨 Frosted glass UI with dynamic album art background
 - 🎤 Synced karaoke lyrics (word-level when available)
 - 👥 Community TTML lyrics from `public.storage.spicylyrics.org`
 - ⏯ Playback controls (play/pause, skip, seek)
 - 📱 Responsive layout
+- 🔄 Works on any domain — Vercel, localhost, custom domain
 
-## Setup
+## Local Dev
 
-### 1. Spotify Developer App
-1. Go to [developer.spotify.com](https://developer.spotify.com/dashboard)
-2. Create a new app
-3. Add `http://localhost:3000/callback` to Redirect URIs
-4. Copy your **Client ID**
-
-### 2. Environment
 ```bash
-cp .env.example .env
-# Add your VITE_SPOTIFY_CLIENT_ID to .env
-```
-
-### 3. Run
-```bash
+git clone https://github.com/Ryan-Gamin/spicy-player
+cd spicy-player
 npm install
 npm run dev
+# Open http://localhost:3000 and go through the setup flow
 ```
 
-## Deploy to Vercel
-1. Push to GitHub
-2. Import in Vercel
-3. Add `VITE_SPOTIFY_CLIENT_ID` and `VITE_REDIRECT_URI` as env vars
-4. Update Redirect URI in Spotify dashboard to your Vercel URL
+No `.env` files needed.

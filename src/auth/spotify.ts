@@ -1,5 +1,17 @@
-const CLIENT_ID = import.meta.env.VITE_SPOTIFY_CLIENT_ID as string
-const REDIRECT_URI = import.meta.env.VITE_REDIRECT_URI as string
+// Client ID and redirect URI come from localStorage (set during setup)
+export function getClientId(): string | null {
+  return localStorage.getItem('spotify_client_id')
+}
+
+export function getRedirectUri(): string {
+  // Always use the current origin so it works on any domain (Vercel, localhost, etc.)
+  return `${window.location.origin}/callback`
+}
+
+export function saveClientId(clientId: string) {
+  localStorage.setItem('spotify_client_id', clientId)
+}
+
 const SCOPES = 'user-read-currently-playing user-read-playback-state user-modify-playback-state'
 
 function generateCodeVerifier(length = 128): string {
@@ -18,14 +30,18 @@ async function generateCodeChallenge(verifier: string): Promise<string> {
 }
 
 export async function redirectToAuth() {
+  const clientId = getClientId()
+  if (!clientId) throw new Error('No client ID configured')
+
+  const redirectUri = getRedirectUri()
   const verifier = generateCodeVerifier()
   const challenge = await generateCodeChallenge(verifier)
   localStorage.setItem('pkce_verifier', verifier)
 
   const params = new URLSearchParams({
-    client_id: CLIENT_ID,
+    client_id: clientId,
     response_type: 'code',
-    redirect_uri: REDIRECT_URI,
+    redirect_uri: redirectUri,
     scope: SCOPES,
     code_challenge_method: 'S256',
     code_challenge: challenge,
@@ -38,16 +54,17 @@ export async function handleCallback(): Promise<string | null> {
   const params = new URLSearchParams(window.location.search)
   const code = params.get('code')
   const verifier = localStorage.getItem('pkce_verifier')
-  if (!code || !verifier) return null
+  const clientId = getClientId()
+  if (!code || !verifier || !clientId) return null
 
   const res = await fetch('https://accounts.spotify.com/api/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
-      client_id: CLIENT_ID,
+      client_id: clientId,
       grant_type: 'authorization_code',
       code,
-      redirect_uri: REDIRECT_URI,
+      redirect_uri: getRedirectUri(),
       code_verifier: verifier,
     }),
   })
