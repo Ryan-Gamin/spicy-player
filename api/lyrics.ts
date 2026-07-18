@@ -3,31 +3,34 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).send('Method Not Allowed')
 
-  const { body, headers } = req
-  const spotifyAuth = headers['x-spotify-auth']
-  const clientVersion = headers['x-spicy-version']
+  // The real SpicyLyrics client sends the Spotify token as 'SpicyLyrics-WebAuth'
+  // We accept it from the frontend as 'x-spotify-auth' and forward it correctly
+  const spotifyAuth = req.headers['x-spotify-auth'] as string | undefined
+  const spicyVersion = req.headers['x-spicy-version'] as string | undefined
 
-  if (!spotifyAuth || !clientVersion) {
-    return res.status(400).send('Missing required headers')
-  }
+  if (!spotifyAuth) return res.status(401).send('Missing Spotify auth')
 
   try {
     const upstream = await fetch('https://api.spicylyrics.org/query', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'SpicyLyrics-Version': clientVersion as string,
-        'SpicyLyrics-WebAuth': spotifyAuth as string,
-        // Spoof the origin the API expects
+        'SpicyLyrics-Version': spicyVersion ?? '',
+        // This is the key header the API uses to authenticate and return synced lyrics
+        'SpicyLyrics-WebAuth': spotifyAuth,
         'Origin': 'https://xpui.app.spotify.com',
         'Referer': 'https://xpui.app.spotify.com/',
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify(req.body),
     })
 
+    if (!upstream.ok) return res.status(upstream.status).send('Upstream error')
+
     const data = await upstream.json()
-    res.status(upstream.status).json(data)
-  } catch {
-    res.status(500).json({ error: 'Proxy error' })
+    res.setHeader('Cache-Control', 'no-store')
+    res.status(200).json(data)
+  } catch (e) {
+    console.error('[lyrics proxy] error:', e)
+    res.status(500).send('Proxy error')
   }
 }

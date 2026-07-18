@@ -12,6 +12,39 @@ async function getVersion(): Promise<string> {
   return text
 }
 
+function parseLines(data: unknown): LyricLine[] | null {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return null
+
+  const d = data as Record<string, unknown>
+  if (!Array.isArray(d.Lines) || d.Lines.length === 0) return null
+
+  const firstLine = d.Lines[0] as Record<string, unknown>
+  const rawStart = Number(firstLine?.StartTime ?? 0)
+  const isSeconds = rawStart > 0 && rawStart < 10000
+  const toMs = (v: unknown) => isSeconds ? Math.round(Number(v ?? 0) * 1000) : Number(v ?? 0)
+
+  const lines: LyricLine[] = []
+  for (const line of d.Lines as Array<Record<string, unknown>>) {
+    const text = String(line.Text ?? '').trim()
+    if (!text) continue
+    lines.push({
+      text,
+      startMs: toMs(line.StartTime),
+      endMs: toMs(line.EndTime),
+      isBackground: Boolean(line.IsBackground ?? false),
+      words: Array.isArray(line.Syllabes)
+        ? (line.Syllabes as Array<Record<string, unknown>>).map((s) => ({
+            text: String(s.Text ?? ''),
+            startMs: toMs(s.StartTime),
+            endMs: toMs(s.EndTime),
+          }))
+        : undefined,
+    })
+  }
+
+  return lines.length > 0 ? lines : null
+}
+
 export async function fetchSpicyLyrics(
   trackId: string,
   spotifyToken: string
@@ -22,6 +55,7 @@ export async function fetchSpicyLyrics(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      // Frontend sends as x-spotify-auth; proxy forwards as SpicyLyrics-WebAuth
       'x-spotify-auth': `Bearer ${spotifyToken}`,
       'x-spicy-version': version,
     },
@@ -43,9 +77,8 @@ export async function fetchSpicyLyrics(
 
   try {
     const unpacked = packer.unpack(result.data)
-    // Log the FULL unpacked object so we can see every key and nested structure
-    console.log('[SpicyLyrics] FULL unpacked:', JSON.stringify(unpacked, null, 2).slice(0, 2000))
-    return null // temporarily return null while debugging
+    console.log('[SpicyLyrics] Type:', (unpacked as Record<string,unknown>)?.Type)
+    return parseLines(unpacked)
   } catch (e) {
     console.error('[SpicyLyrics] unpack failed:', e)
     return null
