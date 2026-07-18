@@ -13,18 +13,13 @@ async function getVersion(): Promise<string> {
 }
 
 function parseLines(data: unknown): LyricLine[] | null {
-  if (!Array.isArray(data) || data.length < 2) {
-    console.warn('[SpicyLyrics] data is not an array or too short:', data)
-    return null
-  }
+  if (!Array.isArray(data) || data.length === 0) return null
 
-  const header = data[0] as unknown[]
-  console.log('[SpicyLyrics] header row:', JSON.stringify(header))
-  console.log('[SpicyLyrics] first data row:', JSON.stringify(data[1]))
+  const first = data[0]
 
-  // Object array: [{ Text, StartTime, EndTime }, ...]
-  if (!Array.isArray(header)) {
-    return (data as Array<Record<string, unknown>>).map((line) => {
+  // Shape A: array of objects [{ Text, StartTime, EndTime }, ...]
+  if (typeof first === 'object' && first !== null && !Array.isArray(first)) {
+    const lines = (data as Array<Record<string, unknown>>).map((line) => {
       const text = String(line.Text ?? '').trim()
       if (!text) return null
       return {
@@ -34,37 +29,48 @@ function parseLines(data: unknown): LyricLine[] | null {
         isBackground: Boolean(line.IsBackground),
       } as LyricLine
     }).filter(Boolean) as LyricLine[]
+    return lines.length > 0 ? lines : null
   }
 
-  // Array-of-arrays: first row is column headers
-  const headers = header as string[]
-  const col = (name: string) => headers.indexOf(name)
-  const iText = col('Text')
-  const iStart = col('StartTime')
-  const iEnd = col('EndTime')
-  const iBackground = col('IsBackground')
-
-  console.log('[SpicyLyrics] column indices - Text:', iText, 'StartTime:', iStart, 'EndTime:', iEnd)
-
-  if (iText === -1) {
-    console.warn('[SpicyLyrics] Text column not found in header. All columns:', headers)
-    return null
+  // Shape B: array of arrays [["Text","StartTime",...], [line, ms, ms], ...]
+  // where data[0] is a proper header array
+  if (Array.isArray(first) && first.length > 1) {
+    const headers = first as string[]
+    const iText = headers.indexOf('Text')
+    const iStart = headers.indexOf('StartTime')
+    const iEnd = headers.indexOf('EndTime')
+    const iBackground = headers.indexOf('IsBackground')
+    if (iText === -1) return null
+    const lines: LyricLine[] = []
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i] as unknown[]
+      const text = String(row[iText] ?? '').trim()
+      if (!text) continue
+      lines.push({
+        text,
+        startMs: iStart !== -1 ? Number(row[iStart] ?? 0) : 0,
+        endMs: iEnd !== -1 ? Number(row[iEnd] ?? 0) : 0,
+        isBackground: iBackground !== -1 ? Boolean(row[iBackground]) : false,
+      })
+    }
+    return lines.length > 0 ? lines : null
   }
 
-  const lines: LyricLine[] = []
-  for (let i = 1; i < data.length; i++) {
-    const row = data[i] as unknown[]
-    const text = String(row[iText] ?? '').trim()
-    if (!text) continue
-    lines.push({
-      text,
-      startMs: iStart !== -1 ? Number(row[iStart] ?? 0) : 0,
-      endMs: iEnd !== -1 ? Number(row[iEnd] ?? 0) : 0,
-      isBackground: iBackground !== -1 ? Boolean(row[iBackground]) : false,
-    })
+  // Shape C: flat array of strings ["Text", "line1", "line2", ...]
+  // data[0] is the column name string, skip it, rest are lyric lines
+  if (typeof first === 'string') {
+    const lines: LyricLine[] = []
+    // Skip index 0 (it's the column name e.g. "Text")
+    for (let i = 1; i < data.length; i++) {
+      const text = String(data[i] ?? '').trim()
+      if (!text) continue
+      // No timing available — space lines evenly (LyricsView handles timingless display)
+      lines.push({ text, startMs: 0, endMs: 0 })
+    }
+    return lines.length > 0 ? lines : null
   }
 
-  return lines.length > 0 ? lines : null
+  return null
 }
 
 export async function fetchSpicyLyrics(
@@ -72,7 +78,6 @@ export async function fetchSpicyLyrics(
   spotifyToken: string
 ): Promise<LyricLine[] | null> {
   const version = await getVersion()
-  console.log('[SpicyLyrics] using version:', version)
 
   const res = await fetch(`${PROXY_BASE}/lyrics`, {
     method: 'POST',
@@ -87,10 +92,7 @@ export async function fetchSpicyLyrics(
     }),
   })
 
-  if (!res.ok) {
-    console.warn('[SpicyLyrics] proxy error:', res.status)
-    return null
-  }
+  if (!res.ok) return null
 
   const json = await res.json()
   const queriesArr = json?.queries
@@ -98,8 +100,6 @@ export async function fetchSpicyLyrics(
 
   const lyricsJob = queriesArr.find((q: { operationId?: string }) => q.operationId === '0') ?? queriesArr[1]
   const result = lyricsJob?.result
-  console.log('[SpicyLyrics] httpStatus:', result?.httpStatus, 'format:', result?.format)
-
   if (!result || result.httpStatus !== 200) return null
 
   try {
