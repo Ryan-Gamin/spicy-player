@@ -21,10 +21,7 @@ export function useLyrics(trackId: string | null, token: string | null) {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!trackId || !token) {
-      setLyrics(null)
-      return
-    }
+    if (!trackId || !token) { setLyrics(null); return }
 
     let cancelled = false
     setLoading(true)
@@ -32,35 +29,17 @@ export function useLyrics(trackId: string | null, token: string | null) {
     setLyrics(null)
 
     fetchSpicyLyrics(trackId, token)
-      .then((result) => {
+      .then((lines) => {
         if (cancelled) return
-        if (!result || !result.Lines || result.Lines.length === 0) {
-          setLyrics(null)
-          setError('No lyrics found for this track')
-          setLoading(false)
-          return
+        if (!lines || lines.length === 0) {
+          setError('No lyrics found')
+        } else {
+          setLyrics(lines)
         }
-
-        const lines: LyricLine[] = result.Lines.map((line) => ({
-          startMs: line.StartTime,
-          endMs: line.EndTime,
-          text: line.Text,
-          isBackground: line.IsBackground ?? false,
-          words: line.Syllabes?.map((s) => ({
-            startMs: s.StartTime,
-            endMs: s.EndTime,
-            text: s.Text,
-          })),
-        }))
-
-        setLyrics(lines)
         setLoading(false)
       })
       .catch(() => {
-        if (!cancelled) {
-          setError('Failed to fetch lyrics')
-          setLoading(false)
-        }
+        if (!cancelled) { setError('Failed to fetch lyrics'); setLoading(false) }
       })
 
     return () => { cancelled = true }
