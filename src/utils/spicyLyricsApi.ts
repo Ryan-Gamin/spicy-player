@@ -1,13 +1,14 @@
 import { SLObjPack } from './SLObjPack'
 
-const API_HOST = 'https://api.spicylyrics.org'
+// Route through our own Vercel proxy to avoid CORS
+const PROXY_BASE = '/api'
 const packer = new SLObjPack()
 
 let cachedVersion: string | null = null
 
 async function getVersion(): Promise<string> {
   if (cachedVersion) return cachedVersion
-  const res = await fetch(`${API_HOST}/version`)
+  const res = await fetch(`${PROXY_BASE}/version`)
   if (!res.ok) throw new Error('Failed to fetch SpicyLyrics version')
   cachedVersion = (await res.text()).trim()
   return cachedVersion
@@ -31,12 +32,12 @@ export async function fetchSpicyLyrics(
 ): Promise<SpicyLyricsResult | null> {
   const version = await getVersion()
 
-  const res = await fetch(`${API_HOST}/query`, {
+  const res = await fetch(`${PROXY_BASE}/lyrics`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'SpicyLyrics-Version': version,
-      'SpicyLyrics-WebAuth': `Bearer ${spotifyToken}`,
+      'x-spotify-auth': `Bearer ${spotifyToken}`,
+      'x-spicy-version': version,
     },
     body: JSON.stringify({
       queries: [
